@@ -1,0 +1,60 @@
+#!/bin/bash
+
+echo "======================================"
+echo "   JobGraph Setup Verification"
+echo "======================================"
+echo ""
+
+echo "Checking project structure..."
+echo ""
+
+if [ -d "backend" ] && [ -d "frontend" ]; then
+    echo "✅ Project directories exist"
+else
+    echo "❌ Missing directories"
+    exit 1
+fi
+
+echo ""
+echo "Backend files:"
+echo "  ✅ $(ls -1 backend/*.js 2>/dev/null | wc -l) JS files"
+echo "  ✅ $(ls -1 backend/models/*.js 2>/dev/null | wc -l) Models"
+echo "  ✅ $(ls -1 backend/controllers/*.js 2>/dev/null | wc -l) Controllers"
+echo "  ✅ $(ls -1 backend/routes/*.js 2>/dev/null | wc -l) Routes"
+
+echo ""
+echo "Frontend files:"
+echo "  ✅ $(ls -1 frontend/src/components/*.jsx 2>/dev/null | wc -l) Components"
+echo "  ✅ $(ls -1 frontend/src/pages/*.jsx 2>/dev/null | wc -l) Pages"
+echo "  ✅ $(ls -1 frontend/src/services/*.js 2>/dev/null | wc -l) Services"
+
+echo ""
+echo "======================================"
+echo "   Next Steps"
+echo "======================================"
+echo ""
+echo "1. Get your Gemini API Key:"
+echo "   → Visit: https://makersuite.google.com/app/apikey"
+echo ""
+echo "2. Update backend/.env with your API key:"
+echo "   GEMINI_API_KEY=your_key_here"
+echo ""
+echo "3. Install backend dependencies:"
+echo "   cd backend && npm install"
+echo ""
+echo "4. Install frontend dependencies:"
+echo "   cd frontend && npm install"
+echo ""
+echo "5. Start MongoDB (if local):"
+echo "   mongod"
+echo ""
+echo "6. Start backend server:"
+echo "   cd backend && npm run dev"
+echo ""
+echo "7. Start frontend (in new terminal):"
+echo "   cd frontend && npm run dev"
+echo ""
+echo "======================================"
+echo "   Access the application at:"
+echo "   http://localhost:3000"
+echo "======================================"

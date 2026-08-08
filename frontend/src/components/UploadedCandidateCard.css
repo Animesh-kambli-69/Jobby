@@ -1,0 +1,79 @@
+.uploaded-candidate-card {
+  margin-top: 1rem;
+  border: 1px solid rgba(159, 167, 255, 0.35);
+  border-radius: 16px;
+  padding: 1rem;
+  background: linear-gradient(160deg, rgba(159, 167, 255, 0.12), rgba(58, 223, 250, 0.08));
+}
+
+.uploaded-candidate-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.8rem;
+}
+
+.uploaded-candidate-card-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.uploaded-candidate-card-header p {
+  margin: 0.25rem 0 0;
+  opacity: 0.75;
+  font-size: 0.88rem;
+}
+
+.uploaded-candidate-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.16);
+  color: #10b981;
+  font-weight: 700;
+}
+
+.uploaded-candidate-identity {
+  display: grid;
+  margin-bottom: 0.8rem;
+}
+
+.uploaded-candidate-identity strong {
+  font-size: 1rem;
+}
+
+.uploaded-candidate-identity span {
+  opacity: 0.8;
+  font-size: 0.9rem;
+}
+
+.skills-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+  font-weight: 600;
+}
+
+.skills-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.skill-pill {
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  background: rgba(58, 223, 250, 0.16);
+  border: 1px solid rgba(58, 223, 250, 0.35);
+  font-size: 0.84rem;
+}
+
+.no-skills {
+  margin: 0;
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
