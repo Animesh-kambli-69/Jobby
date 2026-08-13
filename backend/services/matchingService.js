@@ -3,8 +3,9 @@ import { calculateCosineSimilarity } from '../utils/cosineSimilarity.js';
 
 export const calculateMatchScore = async (candidateSkills, jobSkills) => {
   try {
-    const candidateText = candidateSkills.join(', ');
-    const jobText = jobSkills.join(', ');
+    const candidateText = (Array.isArray(candidateSkills) ? candidateSkills : []).join(', ');
+    const jobText = (Array.isArray(jobSkills) ? jobSkills : []).join(', ');
+
 
     const candidateEmbedding = await generateEmbedding(candidateText);
     const jobEmbedding = await generateEmbedding(jobText);

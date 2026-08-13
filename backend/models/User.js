@@ -17,7 +17,8 @@ const userSchema = new mongoose.Schema({
   role: {
     type: String,
     enum: ['candidate', 'recruiter'],
-    default: 'candidate'
+    default: 'candidate',
+    index: true   // speeds up queries that filter by role
   },
   phone: {
     type: String

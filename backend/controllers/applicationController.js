@@ -22,16 +22,24 @@ const canRecruiterManageJob = async (recruiterId, job) => {
 
 export const applyForJob = async (req, res) => {
   try {
-    const { jobId, candidateName, candidateEmail, candidateSkills, resume } = req.body;
+    const { jobId, candidateSkills, resume } = req.body;
 
-    if (!jobId || !candidateName || !candidateEmail) {
+    if (!jobId) {
       return res.status(400).json({
         success: false,
-        message: 'jobId, candidateName, and candidateEmail are required'
+        message: 'jobId is required'
       });
     }
 
-    const normalizedEmail = String(candidateEmail).trim().toLowerCase();
+    // Always fetch identity from the database using the verified JWT user ID.
+    // Never trust candidateName or candidateEmail from req.body —
+    // a bad actor could send someone else's email and apply as them.
+    const candidate = await User.findById(req.userId).select('name email skills');
+    if (!candidate) {
+      return res.status(404).json({ success: false, message: 'Candidate not found' });
+    }
+
+    const normalizedEmail = String(candidate.email).trim().toLowerCase();
 
     const job = await Job.findById(jobId);
     if (!job) {
@@ -50,13 +58,18 @@ export const applyForJob = async (req, res) => {
       });
     }
 
-    const matchScore = await calculateMatchScore(candidateSkills, job.requiredSkills);
+    // Use skills from body if provided, otherwise fall back to profile skills
+    const skills = Array.isArray(candidateSkills) && candidateSkills.length > 0
+      ? candidateSkills
+      : (candidate.skills || []);
+
+    const matchScore = await calculateMatchScore(skills, job.requiredSkills);
 
     const application = new Application({
       jobId,
-      candidateName,
+      candidateName: candidate.name,
       candidateEmail: normalizedEmail,
-      candidateSkills,
+      candidateSkills: skills,
       resume,
       matchScore
     });
@@ -173,7 +186,7 @@ export const getMyApplications = async (req, res) => {
       candidateEmail: String(candidate.email).toLowerCase()
     })
       .populate('jobId', 'title company location salary status')
-      .sort({ createdAt: -1 });
+      .sort({ appliedAt: -1 });
 
     const normalized = applications.map((application) => ({
       ...application.toObject(),

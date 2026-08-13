@@ -1,0 +1,50 @@
+version: "3.8"
+
+services:
+  mongodb:
+    image: mongo:7-jammy
+    container_name: jobby-mongodb
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: jobgraph
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: jobby-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGODB_URI=mongodb://mongodb:27017/jobgraph
+      - NODE_ENV=production
+      - JWT_SECRET=${JWT_SECRET:-secret_jwt_key_change_in_production}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - FRONTEND_URL=${FRONTEND_URL:-http://localhost:3000}
+    depends_on:
+      - mongodb
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api
+    container_name: jobby-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  mongo-data:

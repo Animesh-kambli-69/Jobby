@@ -8,7 +8,9 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdfParse = require('pdf-parse');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
+
 
 // Helper function to extract text from different file types
 const extractTextFromFile = async (fileBuffer, mimeType) => {
@@ -35,9 +37,11 @@ const extractTextFromFile = async (fileBuffer, mimeType) => {
       mimeType === 'application/msword' ||
       mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     ) {
-      // For DOC/DOCX, read as text (basic support)
-      // For full support, would need mammoth or similar library
-      return fileBuffer.toString('utf-8');
+      // DOC/DOCX are ZIP-based binary formats — reading as UTF-8 produces garbage.
+      // Full support requires the `mammoth` library. Reject clearly for now.
+      throw new Error(
+        'DOC/DOCX files are not fully supported yet. Please upload a PDF or paste your resume as text.'
+      );
     }
 
     // Default: try to read as text
