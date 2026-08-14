@@ -9,7 +9,8 @@
     "dev": "nodemon server.js",
     "seed": "node seed.js",
     "db:init": "node scripts/initDatabase.js",
-    "smoke:test": "node scripts/smokeTest.js"
+    "smoke:test": "node scripts/smokeTest.js",
+    "load:test": "node scripts/loadTest.js"
   },
   "keywords": [
     "job",

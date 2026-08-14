@@ -16,7 +16,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: jobby-backend
     restart: always
     ports:
       - "5000:5000"
