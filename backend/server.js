@@ -36,11 +36,37 @@ app.get('/api/health', (req, res) => {
 
 app.use(errorHandler);
 
+let server;
+
 const startServer = async () => {
   await connectDB();
-  app.listen(PORT, () => {
+  server = app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
 };
 
 startServer();
+
+// Graceful Shutdown implementation
+const handleShutdown = (signal) => {
+  console.log(`\n⚠️ Received ${signal}. Starting graceful shutdown...`);
+  
+  if (server) {
+    server.close(() => {
+      console.log('HTTP server closed.');
+      
+      // Close Mongoose connection
+      import('mongoose').then(({ default: mongoose }) => {
+        mongoose.connection.close(false).then(() => {
+          console.log('MongoDB connection closed.');
+          process.exit(0);
+        });
+      });
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
