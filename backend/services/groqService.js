@@ -1,10 +1,15 @@
 import Groq from 'groq-sdk';
+import dotenv from 'dotenv';
+import { remember, hashKey } from '../utils/cache.js';
+
+dotenv.config();
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY
 });
 
-export const parseResumeWithAI = async (fileContent, fileName = 'resume.txt') => {
+// Original (uncached) resume parser. Called only on a cache miss.
+const parseResumeWithAIUncached = async (fileContent, fileName = 'resume.txt') => {
   try {
     console.log('🤖 Groq AI: Starting resume parse...');
 
@@ -96,7 +101,8 @@ Remember:
   }
 };
 
-export const generateEmbedding = async (text) => {
+// Original (uncached) keyword vector builder. Called only on a cache miss.
+const generateEmbeddingUncached = async (text) => {
   try {
     const prompt = `Extract the top 25 most important technical keywords and skills from this text.
 Focus on: programming languages, frameworks, databases, tools, cloud services, methodologies.
@@ -228,3 +234,32 @@ Include every technical skill you can find. Return ONLY the JSON array.`;
     return [];
   }
 };
+
+// ---------------------------------------------------------------------------
+// Redis-cached versions (Step 5 of the Redis guide).
+// They keep the ORIGINAL names, so every file that imports
+// parseResumeWithAI or generateEmbedding gets caching automatically.
+// ---------------------------------------------------------------------------
+
+const ONE_DAY = 24 * 60 * 60; // seconds
+
+// Parsed resume: cache for 1 day.
+export const parseResumeWithAI = (fileContent, fileName) =>
+  remember(
+    `ai:resume:${hashKey(fileContent)}`,
+    ONE_DAY,
+    () => parseResumeWithAIUncached(fileContent, fileName),
+    // On failure the parser returns an empty profile with no skills.
+    // Never cache that, or a temporary Groq outage would stick for a day.
+    { shouldCache: (result) => Array.isArray(result?.skills) && result.skills.length > 0 }
+  );
+
+// Keyword vector: cache for 7 days.
+export const generateEmbedding = (text) =>
+  remember(
+    `ai:embedding:${hashKey(text)}`,
+    7 * ONE_DAY,
+    () => generateEmbeddingUncached(text),
+    // On failure it returns 768 zeros. Don't cache that either.
+    { shouldCache: (vector) => Array.isArray(vector) && vector.some((v) => v !== 0) }
+  );

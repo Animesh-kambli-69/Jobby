@@ -1,6 +1,18 @@
+// backend/controllers/jobController.js
 import Job from '../models/Job.js';
 import { generateEmbedding } from '../services/groqService.js';
 import { calculateCosineSimilarity } from '../utils/cosineSimilarity.js';
+import { remember, cacheDel } from '../utils/cache.js';               // NEW
+
+const ACTIVE_JOBS_KEY = 'jobs:active';                                 // NEW
+const FIVE_MINUTES = 5 * 60;                                           // NEW
+const TEN_MINUTES = 10 * 60;                                           // NEW
+
+// NEW: one shared, cached way to load active jobs (used by two endpoints)
+const getActiveJobs = () =>
+  remember(ACTIVE_JOBS_KEY, FIVE_MINUTES, () =>
+    Job.find({ status: 'active' }).sort({ createdAt: -1 }).lean()
+  );
 
 export const createJob = async (req, res) => {
   try {
@@ -20,6 +32,8 @@ export const createJob = async (req, res) => {
     });
 
     await job.save();
+    await cacheDel(ACTIVE_JOBS_KEY);   // NEW: the list changed, so throw away the old copy
+
     res.status(201).json({ success: true, job });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -28,28 +42,20 @@ export const createJob = async (req, res) => {
 
 export const searchJobs = async (req, res) => {
   try {
-    const { query, candidateSkills } = req.body;
+    const { candidateSkills } = req.body;
 
-    let jobs = await Job.find({ status: 'active' });
+    let jobs = await getActiveJobs();                                  // CHANGED: cached list
 
     if (candidateSkills && candidateSkills.length > 0) {
-      const candidateSkillsText = candidateSkills.join(', ');
-      const candidateEmbedding = await generateEmbedding(candidateSkillsText);
+      const candidateEmbedding = await generateEmbedding(candidateSkills.join(', ')); // cached in Step 5
 
-      jobs = jobs.map(job => {
-        const similarity = calculateCosineSimilarity(candidateEmbedding, job.skillsEmbedding);
-        return {
-          ...job.toObject(),
-          matchScore: Math.round(similarity * 100)
-        };
-      });
-
+      jobs = jobs.map((job) => ({
+        ...job,                                                        // CHANGED: plain object, no .toObject()
+        matchScore: Math.round(calculateCosineSimilarity(candidateEmbedding, job.skillsEmbedding) * 100)
+      }));
       jobs.sort((a, b) => b.matchScore - a.matchScore);
     } else {
-      jobs = jobs.map(job => ({
-        ...job.toObject(),
-        matchScore: 0
-      }));
+      jobs = jobs.map((job) => ({ ...job, matchScore: 0 }));            // CHANGED
     }
 
     res.json({ success: true, jobs });
@@ -60,7 +66,9 @@ export const searchJobs = async (req, res) => {
 
 export const getJobById = async (req, res) => {
   try {
-    const job = await Job.findById(req.params.id);
+    const job = await remember(`job:${req.params.id}`, TEN_MINUTES, () =>   // CHANGED
+      Job.findById(req.params.id).lean()
+    );
     if (!job) {
       return res.status(404).json({ success: false, message: 'Job not found' });
     }
@@ -72,7 +80,7 @@ export const getJobById = async (req, res) => {
 
 export const getAllJobs = async (req, res) => {
   try {
-    const jobs = await Job.find({ status: 'active' }).sort({ createdAt: -1 });
+    const jobs = await getActiveJobs();                                // CHANGED
     res.json({ success: true, jobs });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
