@@ -6,11 +6,14 @@ import {
 	getRecruiterDashboardSummary
 } from '../controllers/recruiterAuthController.js';
 import { authMiddleware, requireRole } from '../middleware/authMiddleware.js';
+import { authLimiter } from '../middleware/rateLimiter.js';
 
 const router = express.Router();
 
-router.post('/register', registerRecruiter);
-router.post('/login', loginRecruiter);
+// Login and sign-up: max 10 failed attempts per 15 minutes per IP
+router.post('/register', authLimiter, registerRecruiter);
+router.post('/login', authLimiter, loginRecruiter);
+
 router.get('/me', authMiddleware, requireRole(['recruiter']), getRecruiterMe);
 router.get('/summary', authMiddleware, requireRole(['recruiter']), getRecruiterDashboardSummary);
 
