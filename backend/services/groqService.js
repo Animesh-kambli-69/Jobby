@@ -1,12 +1,22 @@
+import 'dotenv/config';
 import Groq from 'groq-sdk';
 import dotenv from 'dotenv';
 import { remember, hashKey } from '../utils/cache.js';
 
 dotenv.config();
 
-const groq = new Groq({
-  apiKey: process.env.GROQ_API_KEY
-});
+const groqApiKey = process.env.GROQ_API_KEY?.trim();
+const groq = groqApiKey
+  ? new Groq({ apiKey: groqApiKey })
+  : null;
+
+const getGroqClient = () => {
+  if (!groq) {
+    throw new Error('GROQ_API_KEY is not configured');
+  }
+
+  return groq;
+};
 
 // Original (uncached) resume parser. Called only on a cache miss.
 const parseResumeWithAIUncached = async (fileContent, fileName = 'resume.txt') => {
@@ -44,7 +54,7 @@ Remember:
 3. If information is not found, use reasonable defaults
 `;
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       messages: [
         {
           role: 'system',
@@ -110,7 +120,7 @@ Return them as a comma-separated list, nothing else:
 
 ${text}`;
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       messages: [
         {
           role: 'system',
@@ -208,7 +218,7 @@ ${fileContent}
 Return ONLY a JSON array of strings like: ["JavaScript", "React", "Node.js", "MongoDB"]
 Include every technical skill you can find. Return ONLY the JSON array.`;
 
-    const completion = await groq.chat.completions.create({
+    const completion = await getGroqClient().chat.completions.create({
       messages: [
         {
           role: 'user',
