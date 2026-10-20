@@ -1,4 +1,15 @@
+import dns from 'node:dns';
 import mongoose from 'mongoose';
+
+// Fix querySrv ECONNREFUSED on local environments
+try {
+  const currentServers = dns.getServers();
+  if (currentServers.includes('127.0.0.1') || currentServers.includes('::1') || currentServers.length === 0) {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  }
+} catch {
+  // Ignore
+}
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import User from './models/User.js';

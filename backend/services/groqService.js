@@ -18,6 +18,49 @@ const getGroqClient = () => {
   return groq;
 };
 
+const PRIMARY_MODELS = [
+  process.env.GROQ_MODEL,
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.8-27b',
+  'llama-3.3-70b-versatile'
+].filter(Boolean);
+
+const FAST_MODELS = [
+  process.env.GROQ_FAST_MODEL,
+  'openai/gpt-oss-20b',
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.8-27b',
+  'llama-3.1-8b-instant'
+].filter(Boolean);
+
+const createChatCompletionWithFallback = async (createParams, candidateModels) => {
+  const client = getGroqClient();
+  let lastError = null;
+
+  for (const model of candidateModels) {
+    try {
+      return await client.chat.completions.create({
+        ...createParams,
+        model
+      });
+    } catch (err) {
+      lastError = err;
+      const isNotFound =
+        err?.status === 404 ||
+        err?.code === 'model_not_found' ||
+        String(err?.message || '').includes('does not exist');
+
+      if (isNotFound) {
+        console.warn(`⚠️ Groq model "${model}" not available, trying next fallback model...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
+};
+
 // Original (uncached) resume parser. Called only on a cache miss.
 const parseResumeWithAIUncached = async (fileContent, fileName = 'resume.txt') => {
   try {
@@ -54,7 +97,7 @@ Remember:
 3. If information is not found, use reasonable defaults
 `;
 
-    const completion = await getGroqClient().chat.completions.create({
+    const completion = await createChatCompletionWithFallback({
       messages: [
         {
           role: 'system',
@@ -65,10 +108,9 @@ Remember:
           content: prompt
         }
       ],
-      model: 'llama-3.3-70b-versatile',
       temperature: 0.1,
       max_tokens: 2048
-    });
+    }, PRIMARY_MODELS);
 
     const responseText = completion.choices[0]?.message?.content || '{}';
     console.log('🤖 Groq AI raw response length:', responseText.length);
@@ -120,7 +162,7 @@ Return them as a comma-separated list, nothing else:
 
 ${text}`;
 
-    const completion = await getGroqClient().chat.completions.create({
+    const completion = await createChatCompletionWithFallback({
       messages: [
         {
           role: 'system',
@@ -131,10 +173,9 @@ ${text}`;
           content: prompt
         }
       ],
-      model: 'llama-3.1-8b-instant',
       temperature: 0,
       max_tokens: 300
-    });
+    }, FAST_MODELS);
 
     const keywords = completion.choices[0]?.message?.content || '';
     const keywordList = keywords
@@ -218,17 +259,16 @@ ${fileContent}
 Return ONLY a JSON array of strings like: ["JavaScript", "React", "Node.js", "MongoDB"]
 Include every technical skill you can find. Return ONLY the JSON array.`;
 
-    const completion = await getGroqClient().chat.completions.create({
+    const completion = await createChatCompletionWithFallback({
       messages: [
         {
           role: 'user',
           content: prompt
         }
       ],
-      model: 'llama-3.1-8b-instant',
       temperature: 0.1,
       max_tokens: 500
-    });
+    }, FAST_MODELS);
 
     const responseText = completion.choices[0]?.message?.content || '[]';
     const jsonMatch = responseText.match(/\[[\s\S]*\]/);

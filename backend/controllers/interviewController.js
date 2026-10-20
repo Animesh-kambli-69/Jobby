@@ -3,7 +3,37 @@ import InterviewRecording from '../models/InterviewRecording.js';
 import User from '../models/User.js';
 import { cloudinary, isCloudinaryConfigured } from '../config/cloudinary.js';
 
-const MODEL = 'llama-3.3-70b-versatile';
+const CANDIDATE_MODELS = [
+  process.env.GROQ_MODEL,
+  'openai/gpt-oss-120b',
+  'qwen/qwen3.8-27b',
+  'llama-3.3-70b-versatile'
+].filter(Boolean);
+
+const fetchGroqChatWithFallback = async (apiKey, requestBody) => {
+  let lastResponse = null;
+  for (const model of CANDIDATE_MODELS) {
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        ...requestBody,
+        model
+      })
+    });
+
+    if (res.status === 404) {
+      console.warn(`⚠️ Groq model "${model}" not found (404), trying next model...`);
+      lastResponse = res;
+      continue;
+    }
+    return res;
+  }
+  return lastResponse;
+};
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -131,28 +161,20 @@ Candidate resume context:
 ${JSON.stringify(resumeContext)}
 `;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'You generate structured interview question sets. Output must be strict JSON only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.3,
-      max_tokens: 1200
-    })
+  const response = await fetchGroqChatWithFallback(apiKey, {
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You generate structured interview question sets. Output must be strict JSON only.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ],
+    temperature: 0.3,
+    max_tokens: 1200
   });
 
   if (!response.ok) {
@@ -204,28 +226,20 @@ Return strict JSON with this exact shape:
 Keep arrays concise (3-5 items each).
 `;
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'You are a structured interview evaluator. Return strict JSON only.'
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      temperature: 0.2,
-      max_tokens: 1200
-    })
+  const response = await fetchGroqChatWithFallback(apiKey, {
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a structured interview evaluator. Return strict JSON only.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ],
+    temperature: 0.2,
+    max_tokens: 1200
   });
 
   if (!response.ok) {
@@ -362,31 +376,23 @@ const requestGroqAnalysis = async ({ transcript, eyeContactPercentage, duration 
     return buildFallbackAnalysis(eyeContactPercentage);
   }
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      response_format: { type: 'json_object' },
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an interview coach. Return strictly valid JSON with keys: score (0-100), confidence (0-1), eye_contact (string), feedback (string).'
-        },
-        {
-          role: 'user',
-          content: JSON.stringify({
-            transcript,
-            eye_contact_percentage: eyeContactPercentage,
-            duration
-          })
-        }
-      ],
-      temperature: 0.2
-    })
+  const response = await fetchGroqChatWithFallback(apiKey, {
+    response_format: { type: 'json_object' },
+    messages: [
+      {
+        role: 'system',
+        content: 'You are an interview coach. Return strictly valid JSON with keys: score (0-100), confidence (0-1), eye_contact (string), feedback (string).'
+      },
+      {
+        role: 'user',
+        content: JSON.stringify({
+          transcript,
+          eye_contact_percentage: eyeContactPercentage,
+          duration
+        })
+      }
+    ],
+    temperature: 0.2
   });
 
   if (!response.ok) {

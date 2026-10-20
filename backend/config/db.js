@@ -1,4 +1,15 @@
+import dns from 'node:dns';
 import mongoose from 'mongoose';
+
+// Fix querySrv ECONNREFUSED on environments where local loopback (127.0.0.1) or ISP DNS fails SRV lookup
+try {
+  const currentServers = dns.getServers();
+  if (currentServers.includes('127.0.0.1') || currentServers.includes('::1') || currentServers.length === 0) {
+    dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+  }
+} catch {
+  // Ignore DNS configuration errors
+}
 import User from '../models/User.js';
 import Job from '../models/Job.js';
 import Application from '../models/Application.js';
@@ -70,6 +81,27 @@ const connectDB = async () => {
     console.log(`✅ MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
     console.log('✅ MongoDB collections and indexes are ready');
   } catch (error) {
+    if (error.message && (error.message.includes('querySrv') || error.message.includes('ECONNREFUSED'))) {
+      console.warn('⚠️ MongoDB SRV lookup failed. Retrying with Google/Cloudflare DNS (8.8.8.8, 1.1.1.1)...');
+      try {
+        dns.setServers(['8.8.8.8', '1.1.1.1', '8.8.4.4']);
+        const mongoUri = resolveMongoUri();
+        const conn = await mongoose.connect(mongoUri, {
+          serverSelectionTimeoutMS: 10000,
+          maxPoolSize: 10
+        });
+
+        await conn.connection.db.admin().ping();
+        await initializeDatabase();
+        console.log(`✅ MongoDB Connected: ${conn.connection.host}/${conn.connection.name}`);
+        console.log('✅ MongoDB collections and indexes are ready');
+        return conn;
+      } catch (retryError) {
+        console.error(`❌ Retry Error: ${retryError.message}`);
+        process.exit(1);
+      }
+    }
+
     console.error(`❌ Error: ${error.message}`);
     process.exit(1);
   }
