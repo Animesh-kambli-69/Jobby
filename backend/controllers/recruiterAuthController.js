@@ -4,273 +4,93 @@ import User from '../models/User.js';
 import Job from '../models/Job.js';
 import Application from '../models/Application.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) throw new Error('JWT_SECRET environment variable is required');
-
-
-const normalizeEmail = (email = '') => email.trim().toLowerCase();
-
-const isValidEmail = (email = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
-const isStrongPassword = (password = '') => {
-  if (password.length < 8) return false;
-  const hasUpper = /[A-Z]/.test(password);
-  const hasLower = /[a-z]/.test(password);
-  const hasDigit = /\d/.test(password);
-  return hasUpper && hasLower && hasDigit;
-};
-
-const createToken = (user) => {
-  return jwt.sign(
-    { userId: user._id, email: user.email, role: user.role },
-    JWT_SECRET,
-    { expiresIn: '7d' }
-  );
-};
+const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const createToken = (u) => jwt.sign({ userId: u._id, email: u.email, role: u.role }, JWT_SECRET, { expiresIn: '7d' });
 
 export const registerRecruiter = async (req, res) => {
   try {
     const { name, email, password, company } = req.body;
-    const normalizedName = (name || '').trim();
-    const normalizedEmail = normalizeEmail(email);
-    const normalizedCompany = (company || '').trim();
-
-    if (!normalizedName || !normalizedEmail || !password || !normalizedCompany) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide name, email, password, and company'
-      });
+    if (!name?.trim() || !email?.trim() || !password || !company?.trim()) {
+      return res.status(400).json({ success: false, message: 'All fields required' });
     }
 
-    if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide a valid email address'
-      });
-    }
-
-    if (!isStrongPassword(password)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 8 characters and include uppercase, lowercase, and a number'
-      });
-    }
-
-    const existingUser = await User.findOne({ email: normalizedEmail });
-    if (existingUser) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already exists with this email'
-      });
+    const normalizedEmail = email.trim().toLowerCase();
+    if (await User.findOne({ email: normalizedEmail })) {
+      return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-
     const user = await User.create({
-      name: normalizedName,
-      email: normalizedEmail,
-      password: hashedPassword,
-      role: 'recruiter',
-      company: normalizedCompany
+      name: name.trim(), email: normalizedEmail, password: hashedPassword, role: 'recruiter', company: company.trim()
     });
 
-    const token = createToken(user);
-
-    return res.status(201).json({
+    res.status(201).json({
       success: true,
-      message: 'Recruiter registered successfully',
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        company: user.company
-      }
+      token: createToken(user),
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, company: user.company }
     });
-  } catch (error) {
-    console.error('Recruiter registration error:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const loginRecruiter = async (req, res) => {
   try {
     const { email, password } = req.body;
-    const normalizedEmail = normalizeEmail(email);
-
-    if (!normalizedEmail || !password) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide email and password'
-      });
+    const user = await User.findOne({ email: email?.trim().toLowerCase() });
+    if (!user || user.role !== 'recruiter' || !(await bcrypt.compare(password, user.password))) {
+      return res.status(401).json({ success: false, message: 'Invalid recruiter credentials' });
     }
 
-    if (!isValidEmail(normalizedEmail)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide a valid email address'
-      });
-    }
-
-    const user = await User.findOne({ email: normalizedEmail });
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    if (user.role !== 'recruiter') {
-      return res.status(403).json({
-        success: false,
-        message: 'This account is not a recruiter account'
-      });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid credentials'
-      });
-    }
-
-    const token = createToken(user);
-
-    return res.json({
+    res.json({
       success: true,
-      message: 'Recruiter login successful',
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        company: user.company
-      }
+      token: createToken(user),
+      user: { id: user._id, name: user.name, email: user.email, role: user.role, company: user.company }
     });
-  } catch (error) {
-    console.error('Recruiter login error:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const getRecruiterMe = async (req, res) => {
   try {
     const user = await User.findById(req.userId).select('-password');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: 'Recruiter not found'
-      });
-    }
-
-    if (user.role !== 'recruiter') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: recruiter only endpoint'
-      });
-    }
-
-    return res.json({
-      success: true,
-      user,
-      profileCompleteness: {
-        hasCompany: Boolean(user.company),
-        hasPhone: Boolean(user.phone),
-        hasProfileLinks: Boolean(user.profileLinks?.linkedin || user.profileLinks?.github),
-        score: [user.company, user.phone, user.profileLinks?.linkedin || user.profileLinks?.github]
-          .filter(Boolean).length
-      }
-    });
-  } catch (error) {
-    console.error('Get recruiter profile error:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+    if (!user || user.role !== 'recruiter') return res.status(403).json({ success: false, message: 'Unauthorized' });
+    res.json({ success: true, user });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const getRecruiterDashboardSummary = async (req, res) => {
   try {
     const recruiter = await User.findById(req.userId).select('company role');
-    if (!recruiter || recruiter.role !== 'recruiter') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied: recruiter only endpoint'
-      });
-    }
+    if (recruiter?.role !== 'recruiter') return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    const jobQuery = recruiter.company
-      ? { company: recruiter.company }
-      : { recruiterId: recruiter._id };
+    const jobQuery = recruiter.company ? { company: recruiter.company } : { recruiterId: recruiter._id };
+    const jobs = await Job.find(jobQuery).select('_id status requiredSkills').lean();
+    const jobIds = jobs.map(j => j._id);
+    const applications = jobIds.length ? await Application.find({ jobId: { $in: jobIds } }).select('status jobId candidateEmail').lean() : [];
 
-    const jobs = await Job.find(jobQuery).select('_id status requiredSkills');
-    const jobIds = jobs.map((job) => job._id);
+    const skillCounts = {};
+    jobs.forEach(j => (j.requiredSkills || []).forEach(s => skillCounts[s] = (skillCounts[s] || 0) + 1));
+    const topRequiredSkills = Object.entries(skillCounts).sort((a, b) => b[1] - a[1]).slice(0, 5).map(([skill, count]) => ({ skill, count }));
 
-    const applications = jobIds.length > 0
-      ? await Application.find({ jobId: { $in: jobIds } }).select('status jobId candidateEmail')
-      : [];
-
-    const activeJobs = jobs.filter((job) => job.status === 'active').length;
-    const closedJobs = jobs.filter((job) => job.status === 'closed').length;
-    const pendingApplications = applications.filter((app) => app.status === 'pending').length;
-    const acceptedApplications = applications.filter((app) => app.status === 'accepted').length;
-    const rejectedApplications = applications.filter((app) => app.status === 'rejected').length;
-
-    const applicationsByJob = {};
-    const uniqueCandidateEmails = new Set();
-    applications.forEach((application) => {
-      const key = String(application.jobId);
-      applicationsByJob[key] = (applicationsByJob[key] || 0) + 1;
-      if (application.candidateEmail) {
-        uniqueCandidateEmails.add(application.candidateEmail.toLowerCase());
-      }
-    });
-
-    const skillCounts = new Map();
-    jobs.forEach((job) => {
-      (job.requiredSkills || []).forEach((skill) => {
-        const key = String(skill || '').trim();
-        if (!key) return;
-        skillCounts.set(key, (skillCounts.get(key) || 0) + 1);
-      });
-    });
-
-    const topRequiredSkills = [...skillCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([skill, count]) => ({ skill, count }));
-
-    return res.json({
+    res.json({
       success: true,
       summary: {
         totalJobs: jobs.length,
-        activeJobs,
-        closedJobs,
+        activeJobs: jobs.filter(j => j.status === 'active').length,
+        closedJobs: jobs.filter(j => j.status === 'closed').length,
         totalApplications: applications.length,
-        pendingApplications,
-        acceptedApplications,
-        rejectedApplications,
-        uniqueCandidates: uniqueCandidateEmails.size,
-        applicationsByJob,
+        pendingApplications: applications.filter(a => a.status === 'pending').length,
+        acceptedApplications: applications.filter(a => a.status === 'accepted').length,
+        rejectedApplications: applications.filter(a => a.status === 'rejected').length,
+        uniqueCandidates: new Set(applications.map(a => a.candidateEmail?.toLowerCase()).filter(Boolean)).size,
         topRequiredSkills
       }
     });
-  } catch (error) {
-    console.error('Recruiter summary error:', error);
-    return res.status(500).json({
-      success: false,
-      message: error.message
-    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };

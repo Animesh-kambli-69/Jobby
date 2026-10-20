@@ -3,235 +3,104 @@ import Job from '../models/Job.js';
 import User from '../models/User.js';
 import { calculateMatchScore } from '../services/matchingService.js';
 
-const canRecruiterManageJob = async (recruiterId, job) => {
+const canManage = async (recruiterId, job) => {
   const recruiter = await User.findById(recruiterId).select('role company');
-  if (!recruiter || recruiter.role !== 'recruiter') {
-    return false;
-  }
-
-  if (job.recruiterId && String(job.recruiterId) === String(recruiterId)) {
-    return true;
-  }
-
-  if (recruiter.company && job.company && recruiter.company === job.company) {
-    return true;
-  }
-
-  return false;
+  return recruiter?.role === 'recruiter' && (
+    String(job.recruiterId) === String(recruiterId) || recruiter.company === job.company
+  );
 };
 
 export const applyForJob = async (req, res) => {
   try {
     const { jobId, candidateSkills, resume } = req.body;
+    if (!jobId) return res.status(400).json({ success: false, message: 'jobId is required' });
 
-    if (!jobId) {
-      return res.status(400).json({
-        success: false,
-        message: 'jobId is required'
-      });
-    }
-
-    // Always fetch identity from the database using the verified JWT user ID.
-    // Never trust candidateName or candidateEmail from req.body —
-    // a bad actor could send someone else's email and apply as them.
     const candidate = await User.findById(req.userId).select('name email skills');
-    if (!candidate) {
-      return res.status(404).json({ success: false, message: 'Candidate not found' });
-    }
-
-    const normalizedEmail = String(candidate.email).trim().toLowerCase();
-
     const job = await Job.findById(jobId);
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Job not found' });
-    }
+    if (!candidate || !job) return res.status(404).json({ success: false, message: 'Candidate or Job not found' });
 
-    const existingApplication = await Application.findOne({
-      jobId,
-      candidateEmail: normalizedEmail
-    });
+    const email = candidate.email.toLowerCase().trim();
+    const existing = await Application.findOne({ jobId, candidateEmail: email });
+    if (existing) return res.status(409).json({ success: false, message: 'Already applied' });
 
-    if (existingApplication) {
-      return res.status(409).json({
-        success: false,
-        message: 'You have already applied for this job'
-      });
-    }
-
-    // Use skills from body if provided, otherwise fall back to profile skills
-    const skills = Array.isArray(candidateSkills) && candidateSkills.length > 0
-      ? candidateSkills
-      : (candidate.skills || []);
-
+    const skills = candidateSkills?.length ? candidateSkills : (candidate.skills || []);
     const matchScore = await calculateMatchScore(skills, job.requiredSkills);
 
-    const application = new Application({
-      jobId,
-      candidateName: candidate.name,
-      candidateEmail: normalizedEmail,
-      candidateSkills: skills,
-      resume,
-      matchScore
+    const application = await Application.create({
+      jobId, candidateName: candidate.name, candidateEmail: email, candidateSkills: skills, resume, matchScore
     });
 
-    await application.save();
     res.status(201).json({ success: true, application });
-  } catch (error) {
-    if (error?.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: 'You have already applied for this job'
-      });
-    }
-
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(err?.code === 11000 ? 409 : 500).json({ success: false, message: err.message });
   }
 };
 
 export const getApplicationsByJob = async (req, res) => {
   try {
-    const { jobId } = req.params;
+    const job = await Job.findById(req.params.jobId).select('_id company recruiterId');
+    if (!job) return res.status(404).json({ success: false, message: 'Job not found' });
+    if (!(await canManage(req.userId, job))) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
-    const job = await Job.findById(jobId).select('_id company recruiterId');
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Job not found' });
-    }
-
-    const hasAccess = await canRecruiterManageJob(req.userId, job);
-    if (!hasAccess) {
-      return res.status(403).json({ success: false, message: 'You can only view applications for your own jobs' });
-    }
-
-    const applications = await Application.find({ jobId }).sort({ matchScore: -1 });
-
-    const candidateEmails = [...new Set(applications.map((application) => application.candidateEmail))];
-    const candidates = await User.find({
-      role: 'candidate',
-      email: { $in: candidateEmails }
-    }).select('email resumeFileName resumeOriginalName resumeCloudinaryUrl');
-
-    const candidateMap = new Map(
-      candidates.map((candidate) => [String(candidate.email).toLowerCase(), candidate])
-    );
-
-    const enrichedApplications = applications.map((application) => {
-      const candidate = candidateMap.get(String(application.candidateEmail || '').toLowerCase());
-      return {
-        ...application.toObject(),
-        candidateId: candidate?._id || null,
-        resumeFileName: candidate?.resumeFileName || null,
-        resumeOriginalName: candidate?.resumeOriginalName || null,
-        resumeCloudinaryUrl: candidate?.resumeCloudinaryUrl || null
-      };
-    });
-
-    res.json({ success: true, applications: enrichedApplications });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    const applications = await Application.find({ jobId: req.params.jobId }).sort({ matchScore: -1 }).lean();
+    res.json({ success: true, applications });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const updateApplicationStatus = async (req, res) => {
   try {
-    const { id } = req.params;
     const { status } = req.body;
-
-    const allowedStatuses = ['accepted', 'rejected'];
-    if (!allowedStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Status must be accepted or rejected'
-      });
+    if (!['accepted', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Status must be accepted or rejected' });
     }
 
-    const application = await Application.findById(id);
-    if (!application) {
-      return res.status(404).json({ success: false, message: 'Application not found' });
-    }
-
-    const job = await Job.findById(application.jobId).select('_id company recruiterId');
-    if (!job) {
-      return res.status(404).json({ success: false, message: 'Job not found' });
-    }
-
-    const hasAccess = await canRecruiterManageJob(req.userId, job);
-    if (!hasAccess) {
-      return res.status(403).json({ success: false, message: 'You can only update applications for your own jobs' });
-    }
+    const application = await Application.findById(req.params.id);
+    const job = application && await Job.findById(application.jobId).select('_id company recruiterId');
+    if (!application || !job) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!(await canManage(req.userId, job))) return res.status(403).json({ success: false, message: 'Unauthorized' });
 
     application.status = status;
     await application.save();
-
     res.json({ success: true, application });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const getMyApplications = async (req, res) => {
   try {
-    const candidate = await User.findOne({
-      _id: req.userId,
-      role: 'candidate'
-    }).select('email');
+    const user = await User.findById(req.userId).select('email');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    if (!candidate?.email) {
-      return res.status(404).json({
-        success: false,
-        message: 'Candidate profile not found'
-      });
-    }
-
-    const applications = await Application.find({
-      candidateEmail: String(candidate.email).toLowerCase()
-    })
+    const applications = await Application.find({ candidateEmail: user.email.toLowerCase() })
       .populate('jobId', 'title company location salary status')
-      .sort({ appliedAt: -1 });
+      .sort({ appliedAt: -1 })
+      .lean();
 
-    const normalized = applications.map((application) => ({
-      ...application.toObject(),
-      job: application.jobId || null
-    }));
-
-    return res.json({
-      success: true,
-      count: normalized.length,
-      applications: normalized
-    });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+    res.json({ success: true, count: applications.length, applications: applications.map(a => ({ ...a, job: a.jobId })) });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
 
 export const getMyApplicationSummary = async (req, res) => {
   try {
-    const candidate = await User.findOne({
-      _id: req.userId,
-      role: 'candidate'
-    }).select('email');
+    const user = await User.findById(req.userId).select('email');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    if (!candidate?.email) {
-      return res.status(404).json({
-        success: false,
-        message: 'Candidate profile not found'
-      });
-    }
-
-    const candidateEmail = String(candidate.email).toLowerCase();
-    const applications = await Application.find({ candidateEmail }).select('status');
-
-    const summary = {
-      applied: applications.length,
-      rejected: applications.filter((a) => a.status === 'rejected').length,
-      accepted: applications.filter((a) => a.status === 'accepted').length,
-      pending: applications.filter((a) => a.status === 'pending' || a.status === 'reviewed').length
-    };
-
-    return res.json({
+    const apps = await Application.find({ candidateEmail: user.email.toLowerCase() }).select('status').lean();
+    res.json({
       success: true,
-      summary
+      summary: {
+        applied: apps.length,
+        rejected: apps.filter(a => a.status === 'rejected').length,
+        accepted: apps.filter(a => a.status === 'accepted').length,
+        pending: apps.filter(a => ['pending', 'reviewed'].includes(a.status)).length
+      }
     });
-  } catch (error) {
-    return res.status(500).json({ success: false, message: error.message });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 };
