@@ -34,7 +34,7 @@ function Login() {
 
     setLoading(true);
     try {
-      const userData = await login(formData.email, formData.password, formData.role);
+      const userData = await login(formData.email.trim(), formData.password, formData.role);
 
       if (userData.role === 'candidate') {
         navigate('/candidate');

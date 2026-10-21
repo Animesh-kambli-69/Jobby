@@ -91,7 +91,7 @@ export const AuthProvider = ({ children }) => {
       const endpoint = role === 'recruiter' ? `${API_URL}/recruiter-auth/login` : `${API_URL}/auth/login`;
 
       const response = await axios.post(endpoint, {
-        email,
+        email: email.trim(),
         password
       });
 

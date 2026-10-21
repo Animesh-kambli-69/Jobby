@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: jobby-load-balancer
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /lb-health
+    envVars:
+      - key: EC2_BACKEND_HOST
+        sync: false
+      - key: EC2_BACKEND_PORT
+        value: "5000"
+      - key: EC2_BACKEND_PROTOCOL
+        value: "http"
+      - key: RENDER_BACKEND_HOST
+        sync: false
+      - key: RENDER_BACKEND_PORT
+        value: "443"
+      - key: RENDER_BACKEND_PROTOCOL
+        value: "https"

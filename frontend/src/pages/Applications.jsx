@@ -22,7 +22,8 @@ function Applications() {
   const fetchApplications = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch('http://localhost:5000/api/applications/my', {
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+      const response = await fetch(`${apiUrl}/applications/my`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await response.json();
