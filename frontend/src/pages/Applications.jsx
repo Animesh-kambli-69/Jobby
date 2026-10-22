@@ -7,6 +7,7 @@ import {
   Filter, Search, TrendingUp, Eye, MessageSquare, Network
 } from 'lucide-react';
 import './Applications.css';
+import { API_BASE_URL } from '../config';
 
 function Applications() {
   const { user } = useAuth();
