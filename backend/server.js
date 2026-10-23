@@ -13,7 +13,7 @@ import applicationRoutes from './routes/applicationRoutes.js';
 import interviewRoutes from './routes/interviewRoutes.js';
 import { errorHandler } from './middleware/errorMiddleware.js';
 // STEP 7: uncomment the next line after you create middleware/rateLimiter.js
- import { initRateLimiters } from './middleware/rateLimiter.js';
+import { initRateLimiters } from './middleware/rateLimiter.js';
 
 const app = express();
 app.set('trust proxy', 1);
@@ -36,11 +36,16 @@ app.get('/api/health', (req, res) => {
 
 app.use(errorHandler);
 
+app.use(cors({
+  origin: 'https://https://jobby-opal.vercel.app/',
+  credentials: true
+}));
+
 const startServer = async () => {
   await connectDB();       // 1) MongoDB (required)
   await connectRedis();    // 2) Redis (optional: app still works if it fails)
   // STEP 7: uncomment the next line after you create middleware/rateLimiter.js
-   initRateLimiters();
+  initRateLimiters();
   app.listen(PORT, () => {
     console.log(`🚀 Server running on http://localhost:${PORT}`);
   });
